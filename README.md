@@ -17,6 +17,14 @@ statistical machinery that agent-eval reports usually skip:
   sequential early-stopping tests for expensive eval runs, variance
   decomposition
 
+## Install
+
+```bash
+pip install git+https://github.com/<YOUR_GH>/evalstats
+```
+
+(Pre-1.0; install from source. PyPI package to follow once the API settles.)
+
 ## Quickstart
 
 ```python
