@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Is that SWE-bench gap real? — evalstats</title>
+<style>
+  :root {
+    --bg: #0f1117; --card: #171a22; --ink: #e7e9ee; --dim: #9aa3b2;
+    --line: #262b36; --accent: #6ea8fe; --noise: #f0a35e; --real: #6ee7a8;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); line-height: 1.5;
+    padding: 24px 16px 64px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .sub { color: var(--dim); margin: 0 0 24px; font-size: 0.95rem; }
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .presets button {
+    background: var(--card); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 999px; padding: 6px 14px; font-size: 0.85rem; cursor: pointer;
+    font-family: var(--sans); transition: border-color .15s;
+  }
+  .presets button:hover { border-color: var(--accent); }
+  .pickers { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+  @media (max-width: 560px) { .pickers { grid-template-columns: 1fr; } }
+  .picker label { display: block; font-size: 0.75rem; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--dim); margin-bottom: 6px; }
+  select {
+    width: 100%; background: var(--card); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px; font-family: var(--mono); font-size: 0.82rem;
+  }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px; }
+  .rates { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+  .rate .name { font-family: var(--mono); font-size: 0.72rem; color: var(--dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rate .val { font-size: 1.8rem; font-weight: 650; font-family: var(--mono); }
+  .rate .ci { font-size: 0.75rem; color: var(--dim); font-family: var(--mono); }
+  .bar { height: 26px; display: flex; border-radius: 6px; overflow: hidden;
+    margin: 4px 0 6px; background: #0b0d12; border: 1px solid var(--line); }
+  .bar .aonly { background: var(--accent); }
+  .bar .conly { background: #b08cff; }
+  .barlabels { display: flex; justify-content: space-between; font-size: 0.72rem;
+    color: var(--dim); font-family: var(--mono); margin-bottom: 18px; }
+  .verdict { text-align: center; padding: 16px; border-radius: 10px; font-weight: 650;
+    font-size: 1.05rem; }
+  .verdict.noise { background: rgba(240,163,94,.12); color: var(--noise);
+    border: 1px solid rgba(240,163,94,.3); }
+  .verdict.real { background: rgba(110,231,168,.12); color: var(--real);
+    border: 1px solid rgba(110,231,168,.3); }
+  .stats { display: flex; justify-content: center; gap: 24px; margin-top: 14px;
+    font-family: var(--mono); font-size: 0.85rem; color: var(--dim); flex-wrap: wrap; }
+  .stats b { color: var(--ink); font-weight: 650; }
+  .foot { margin-top: 28px; font-size: 0.8rem; color: var(--dim); }
+  .foot code { background: var(--card); padding: 2px 6px; border-radius: 5px;
+    font-size: 0.78rem; border: 1px solid var(--line); }
+  .foot a { color: var(--accent); }
+  .agg { margin-top: 18px; padding: 14px 16px; background: rgba(110,168,254,.07);
+    border: 1px solid rgba(110,168,254,.25); border-radius: 10px; font-size: 0.88rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Is that SWE-bench gap real?</h1>
+  <p class="sub">Pick any two SWE-bench Verified submissions. The leaderboard shows them in rank order — but with only 500 tasks, most of those gaps are statistical noise. This checks, using the same per-instance results the leaderboard is built from.</p>
+
+  <div class="presets">
+    <button data-preset="coinflip">The #1 “coin flip”</button>
+    <button data-preset="adjacent">Random adjacent pair</button>
+    <button data-preset="topbottom">Top vs. bottom</button>
+  </div>
+
+  <div class="pickers">
+    <div class="picker">
+      <label>System A</label>
+      <select id="selA"></select>
+    </div>
+    <div class="picker">
+      <label>System B</label>
+      <select id="selB"></select>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="rates">
+      <div class="rate">
+        <div class="name" id="nameA"></div>
+        <div class="val" id="valA"></div>
+        <div class="ci" id="ciA"></div>
+      </div>
+      <div class="rate" style="text-align:right">
+        <div class="name" id="nameB"></div>
+        <div class="val" id="valB"></div>
+        <div class="ci" id="ciB"></div>
+      </div>
+    </div>
+
+    <div class="bar" id="bar"></div>
+    <div class="barlabels">
+      <span id="aOnlyLbl"></span>
+      <span id="agreeLbl"></span>
+      <span id="cOnlyLbl"></span>
+    </div>
+
+    <div class="verdict" id="verdict"></div>
+    <div class="stats">
+      <span>gap <b id="gap"></b></span>
+      <span>discordant pairs <b id="disc"></b></span>
+      <span>McNemar p <b id="pval"></b></span>
+    </div>
+  </div>
+
+  <div class="agg" id="agg"></div>
+
+  <div class="foot">
+    <p><b>Method.</b> When two systems run the same 500 tasks, only the tasks where exactly one succeeds (the discordant pairs) carry information about which is better. The exact McNemar test asks: given <code>b</code> wins for A and <code>c</code> for B, is the split distinguishable from a coin flip? A gap below the benchmark's resolving power (~5–6 points here) can't be called real, no matter how confidently the leaderboard orders it.</p>
+    <p><b>Caveats (they make the leaderboard look better than it is).</b> Per-pair p-values are unadjusted for multiple comparisons, and comparing an observed ranking involves selection effects. Both biases favor the leaderboard — so if anything, more gaps are noise than shown here.</p>
+    <p>Reproduce from public data: <code>pip install evalstats</code> &nbsp;·&nbsp; data from the <a href="https://github.com/SWE-bench/experiments" target="_blank" rel="noopener">SWE-bench/experiments</a> repo &nbsp;·&nbsp; snapshot 2026-07-01.</p>
+  </div>
+</div>
+
+<script>
+const DATA = {"n":500,"subs":[{"name":"20231010_rag_claude2","k":22,"b":"AABABAAAAgAIAAACCAAMAAAAQAAAAAAAAAABBAgMAAAAAAIAAAABAQAEikAAAAAAAAAAAAAAAAAAAAA="},{"name":"20231010_rag_gpt35","k":2,"b":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAA="},{"name":"20231010_rag_swellama13b","k":6,"b":"AAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAQAAAgAAAAAAAAAAAAAAIAAAAAAgAA="},{"name":"20231010_rag_swellama7b","k":7,"b":"AAAQAAAAAAAIAAAAAAAAAAAAAIAAAAAAAAAAAAAEAAAAAAAAAAQAABAAAAAAAAAAAAAAAIAAAAAAAAA="},{"name":"20240402_rag_claude3opus","k":35,"b":"gABCFAAIAgAAAwACAAAUAQAQCAgAAIBAAAAABYAIAAAAAAAAAEABAUAEQwIAAAAAAAAAAAIAAAQQgAA="},{"name":"20240402_rag_gpt4","k":14,"b":"gAAAGQAIAAAAAQAAAAAEAQAAAAAAAAAAAEAADAAEAAAAAAEAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAA="},{"name":"20240402_sweagent_claude3opus","k":79,"b":"gGBBD0AAIgAEEQAAAQI8BAgQCA1CABBIAFFQFQEICAQMQAigAUABGGwHiBIAAAAAAIBgAAIMAARAQQM="},{"name":"20240402_sweagent_gpt4","k":112,"b":"gOBDHUGIABAckAgGwAI8BYwQAa1DEBFQA1ERnYEIGKQIAQ8gAEABGXgH0AQBAQEAICBACgMMAAAAowM="},{"name":"20240509_amazon-q-developer-agent-20240430-dev","k":128,"b":"gKBPD0HIgpQdGYAGQCYpiAwQUIxlsBEIBMnZPYEMCAwGTAGAAUgBCXgEyxYAACAAQIBiEDOoADKAgQg="},{"name":"20240612_MASAI_gpt4o","k":163,"b":"gMCyH0OA4pY90AhHQAI/WgyUEK1FsjFIDcXJPZ4cgAAKQQGoOUopGVwEj9QBAQAgQaBoAiAtRLEC+Qo="},{"name":"20240615_appmap-navie_gpt4o","k":131,"b":"gIAGHwNIQkYcASAGQAI+RyQUE41AADlYANHZFYEMCi0EQQWoEVABCFwGh1YKAAIiYaAAADKoQAVA0QM="},{"name":"20240617_factory_code_droid","k":185,"b":"kODvH4tIwkQf1QAmRSY+TwwUA71DsDFILMHZ3Z9OiiEETB8gucIFGXgHxlQIFQEiQfBIQgIoQreQ0QM="},{"name":"20240620_sweagent_claude3.5sonnet","k":168,"b":"gOTiX0uAIIQdEYEGACK/XowUQY1hsB1aDaHZ1YsOCUguAY+sk2AAOXz27CYRAAAAAMBgAgYsUGYQmwM="},{"name":"20240628_autocoderover-v20240620","k":192,"b":"gOD/HwfoQuYd0YEGwQK/V4wcEoxjMDEIL9jZvYEcCikESQCqCVIgGfyX33QbAQIgYMBgEqPtRLWS+QM="},{"name":"20240721_amazon-q-developer-agent-20240719-dev","k":194,"b":"sKAtn0vKgtQ/kSEGxCY9fKkUW41FkTVaJ8j5rYkMyKQOySKoKcYJmWxX3xKIAYAiYeBiAAHtQBWQ6Qo="},{"name":"20240728_sweagent_gpt4o","k":116,"b":"gCiAH0GAIRQN0AgGQAYcSIwQCYhGkhBQBfFZnZEAAAAAQAusAWIBiVgE/RQBAAAAAABCAgAtQCmAcQE="},{"name":"20240820_epam-ai-run-gpt-4o","k":120,"b":"gIACHcUAggYNkAAGQAZ8H6wQUYlBkhFQA0HZFREICCUaQACoCUJBiXAGy1YIAAEgAbBoAAIoAAAACQI="},{"name":"20240820_honeycomb","k":203,"b":"oODiHsvIApYtFSFUySY/X4oUW61FsBFYL0Hd/Z0NiuVEgC8sCVJgsWz252YaAYAjcfBiJwIsRDaQ6wI="},{"name":"20240824_gru","k":226,"b":"hOjyH+MA40Q93aUG5CY9XZyQE51nsDVaB+nZuZseiiUuyRuvmUJJmfzX21a7FakicbFgBiItQAXS8wM="},{"name":"20240918_lingma-agent_lingma-swe-gpt-72b","k":125,"b":"gKBiHwGAAlQ9kQEGQCYVbQ0QEo1BEDEYAQGdnYFYig0EwQYtSUIBCXgCgxQAEQAAIfAAAABIAiAAkQI="},{"name":"20240918_lingma-agent_lingma-swe-gpt-7b","k":51,"b":"AIACGQAAQAQMEAAAAAAUQAgQAIhAEBAIAEARDQEACYAAQQEAAUAAKWAGgQQAAAAgAQAAAAAIAAAAgAE="},{"name":"20240920_solver","k":218,"b":"sehgXw+IUkQ906kGgyI/74+1UY3hkDlKD/353Zs+iO0KSS+sG2IpmX5XxxYYBQEgYfFAAqMsRhWQ8Qs="},{"name":"20240924_solver","k":227,"b":"oOjCX4uKQlQtk6kGxSY+X4+UQa1nkTVaL+vZvY8eiy0MWS+uOWopmf33yx4blAEgYXBgBoYtRr3AsQs="},{"name":"20241001_nfactorial","k":129,"b":"gOgSHUSAggR8mCAGRQI8yQgQQolBoDUADFGRtZlOii1MQQamAUIACXAWXhYAAIAAQQBgECAoQAAQ4AM="},{"name":"20241002_lingma-agent_lingma-swe-gpt-72b","k":144,"b":"oADCHUHIEsQMkCgESCIUVSycGq3jmDEYBcGZDYEMiiEESA8oKUgBGXCW01YKFIEicVBAAAEEQCUAkAM="},{"name":"20241002_lingma-agent_lingma-swe-gpt-7b","k":91,"b":"AIBCDUGAgBQNEAAGQIQ0DAAQkIRBkDFIBMFJXYEICAwAxRYAAUAACWgG1EAAAQAAQYBAAAAIQAQAgQM="},{"name":"20241007_nfactorial","k":158,"b":"MMSSD5uAAgR9EYAGQCYuD4gUGL1jEBVIBZldHYkICqhgQQ6sEUBBGXzH2xYAECEiMJBAAihsAjXA2wg="},{"name":"20241016_composio_swekit","k":203,"b":"sKCgH9OII/QfE6kWyGK+Xq2UG61nsRVaDUDdvYscCCUESQ2uGUJBOXr13xYQFQEiIfBgAmpsAjXQ+QM="},{"name":"20241016_epam-ai-run-gpt-4o","k":135,"b":"gMCiHWOAQoYskAEGCAJ/DrgUQYxBkjVYBcGZtQUYACQOQAsgMUApmVAHixYAAAIiYZFgEgAsQBAAEQE="},{"name":"20241022_tools_claude-3-5-haiku","k":203,"b":"kOBiH8OIwlQOdIkGyCY9Xg4UmQxvsBlKBdjZvw8Kgq0uSKuuAUBBGf73/3QbAYsiYfBiIgJsQjXQows="},{"name":"20241022_tools_claude-3-5-sonnet-updated","k":245,"b":"uezCH+vIklR906I/7SY93YuUSaxFurVKLX25nZsKiA0eTa6uHWZpGX/n/x6bAY0CcfBjIpc8Qp3Q8wM="},{"name":"20241023_emergent","k":233,"b":"sejiX4OoQtQ9kwkGzya/f4qVUa1jkTX4D/vZvaMciMFuSR2sG8INmX733xabFYkiYeBgJqYsAmXS8ws="},{"name":"20241025_composio_swekit","k":243,"b":"sOTyn8uJotS/UeEHyCY83y0UWb1luT1aL0D5vZseii0OyYaqmcppuX3335YakaEiYNBiAq9tVrfQ+Qs="},{"name":"20241028_agentless-1.5_gpt4o","k":194,"b":"qcjyH4OKYyYs0QAGRSYs3pwUC6xDsDVKCtVZvYsdCK1GTR+qCUBBqfSH21SZAIAgYbBiECcpxKTQ+QM="},{"name":"20241028_solver","k":250,"b":"seDiH4uIIlZtkakG7WY+7Y61Kb3nsb1KD/rZ3Z8emu8MSa6/2WBpuf6X2xQatakjYfhBBqRsFrfQ+wM="},{"name":"20241029_OpenHands-CodeAct-2.1-sonnet-20241022","k":265,"b":"sfLiH+vKslQ988lHySc/TZuUaa1nublaFv/Z3Zsemm1uxSr+0WIJmX7H/3aZJaIzbfBjIn59Br3Q6ws="},{"name":"20241029_epam-ai-run-claude-3-5-sonnet","k":198,"b":"kazCH8OIokQdkSIHSKY4P7yUG71BkDQYBfzZ7Z8cimVOSQuo6cILuX9m1RQQECEicPhCIqEsQgSQmQs="},{"name":"20241030_nfactorial","k":208,"b":"kODyD7u4smY/kahGwDc8/q0cWoVvoB9YBfnZnYseCokOyQqacUJhGXxX1hYikKAicNBAAKJsBjXQsQs="},{"name":"20241105_nfactorial","k":246,"b":"sejyH8uKolR/0ygG7Tc93alUW61ksTXKJ/H5PZ8OGKROxSvvGUJrmX3X35aboYMicfBiAqY9VJfQ+Qs="},{"name":"20241106_navie-2-gpt4o-sonnet","k":236,"b":"sejSH8uo4nR9E64qyGZ/f7yQWa1jMbvaF/nZPZo8CChujYeuHUoruXB3zxQZEbsrcbhiAoMsIrUQuwY="},{"name":"20241108_autocoderover-v2.0-claude-3-5-sonnet-20241022","k":231,"b":"sezCHwuJYtS9kogH5SY+Xh0cSbxtsLVaDev5nZUcCk0O2QqqPUphiX7v31YJFIEicfBiEqdsRveS+Qs="},{"name":"20241108_devlo","k":271,"b":"sexiH8vIovR987UXxS8fXY+Va61tsTtaL/35nZkemm1uSb+/mUIpTX/3/34ZFa0icehjJj48FjfQ+ws="},{"name":"20241113_nebius-search-open-weight-models-11-24","k":203,"b":"uOjCF+OA4nY/kYkGQCIsT5gcC61DkBFaD+kZvYMdiikuSKMtGUIBGXzX31abEKMiYfBiAiMtRE3CuwM="},{"name":"20241120_artemis_agent","k":160,"b":"kaCCGwPAEhR9ESAGQSQ2Xg2UU6VpkDHKDclRhY0YiARGCBCuQcJAoXhuynYYAQEAYVAgAgNNBjbQoAs="},{"name":"20241125_enginelabs","k":259,"b":"sazgH8vpovR78+1Xzyc/XbvV+r1NublaH//Z/Z8eAmROxSG82UppuX7/3lYLAAAAAMBiIrb9VrfS+Qs="},{"name":"20241125_marscode-agent-dev","k":250,"b":"uejiH8vIolRts6JHia4/3IzUK71rmD1KPd3dvZsLiigayYv+PcJJmXjP33Y5sSEzYfTiIg99Bv3Q6Qs="},{"name":"20241128_SWE-Fixer_Qwen2.5-7b-retriever_Qwen2.5-72b-editor_20241128","k":151,"b":"gOBiH8eIQlQtkYAGyGoWTQiUAoXBMjVKAeRZDaMIiCAGQQagKUIhCfBXzxQIMQBiIbFAUAIkQiQQAwo="},{"name":"20241202_agentless-1.5_claude-3.5-sonnet-20241022","k":254,"b":"qeDyj8/IIlR82cwGzS89X5yYXa1lsLXKD/nZra+ciO1eyZ/uOUZuuXXf33U7MaMhYfhiAiNpBrfQuws="},{"name":"20241202_amazon-q-developer-agent-20241202-dev","k":275,"b":"sejjH8vqslRv868fxy8/3b6UGa1rsz1aL//xnZ8ciGEOTY7vn2JJuf7P/16blYkzcbRiIq58RvfQ8ws="},{"name":"20241208_gru","k":285,"b":"sejyH8/I43Z/16FG7b4//46U663nsD1YL/Xd/Zs/mi1eTb+v+cJBuX7n33YLFaAicfFrFq99Zr/Q+ws="},{"name":"20241212_epam-ai-run-claude-3-5-sonnet","k":277,"b":"sejiH8/KolR90+df7S8/XZ+U271FuLtaL//Z3Z+eiuVu1a+vWWJpOX7P3zYaoYsicfBjArZ8RrfS+ws="},{"name":"20241212_google_jules_gemini_2.0_flash_experimental","k":261,"b":"veziH8uqcsYtk4kGaK4fbr+cS61lsLWaLdfZn5s+q+0OSQ/u1UJtuf6/31YbJKFwcflrUqJslLXQ2wc="},{"name":"20241213_devlo","k":291,"b":"ueziX6+II/Q9841P7C4/35+Ve71Nsb9aH/rZvZse+g1+Xb+/+WJp7X/3/14bMakicfBjJmc9Fr/S2ws="},{"name":"20241221_codestory_midwit_claude-3-5-sonnet_swe-search","k":311,"b":"sezin8vKovT98/d/zzc//5/0e71vu71aP//5/Z+eum1+za+/mUpJuf///56QPYMxcfjKIq94Rv3Q+w8="},{"name":"20241223_emergent","k":286,"b":"ufziH+vIo1R986lXyS8/35+UW71vuD1aD/7ZPZs+i21uSa3veWJhuf///36bBaMjcfBi4oZ8Zr/Q+w8="},{"name":"20250110_blackboxai_agent_v1.1","k":314,"b":"ueziH//J8lZv9/9vTb+/36nU8b1tuz1eL/75/5uby+2+Sa7vWcJpuf/331wau4t6ffzhN6f8FrfR+wM="},{"name":"20250110_learn_by_interact_claude3.5","k":301,"b":"sSx4l/vZ8/QvfuhWz/b/PbbVa73jsb1+H/m5/RW/iEw6Xb//jU5rue/1/z0bOYNTceniF759dvfS6w8="},{"name":"20250112_ugaiforge","k":208,"b":"oMiiH8PIIkR0kYAGxCM+/5wQUa1BsTVaDfjd/ZkcSqlOyZ8umUIJiXn333YZECAgYdBiAKZpRjSQuws="},{"name":"20250117_wandb_programmer_o1_crosscheck5","k":323,"b":"veziX/uuMvZ/94t/7y4/3r+dW71rub9aL+/dvZs+qu06Tbf//WZt6f/f/3Y7navycfjrN6N8Fv3S+w8="},{"name":"20250118_codeshellagent_gemini_2.0_flash_experimental","k":221,"b":"pejiH8MAo1ZtmYkWRSY9FbqUS71FkDVaD/HZ7Zucuy0ezQO42UJJmXjX3lQyFCIgefBiEio9QAeS2Qs="},{"name":"20250120_Bracket","k":266,"b":"vazCG+vIs/QNo+tf7i0/35/Ve71jub9aN9/YPIcuuk1+Xaiv2WJpuf//z/4ZMakiVPBjIgMABLeS2QA="},{"name":"20250122_autocoderover-v2.1-claude-3-5-sonnet-20241022","k":258,"b":"seziH8vJIlR/s4gH5mc/3Z+U2a1HsbVKLdjZvZ8+qe0uyQqvKcZpqX7/9zQbHSsicfhgAmp1VtXS+A8="},{"name":"20250203_openhands_4x_scaled","k":304,"b":"uenSH+vIs1R9++xn7C893Z+c261nu71KP/35/5sfim1uTa+uz2ZpOX/f/16bNaIzffxjJr99Fv/S+ws="},{"name":"20250206_agentscope","k":317,"b":"uezin+/r81R9+61v7y8/X/+Va71vub1aL//5vZ8eiu0+zb/vOUZp+f7f33abtaszcf3jJ459RvXS+ws="},{"name":"20250214_agentless_lite_o3_mini","k":212,"b":"kKDwH3OI0vZ/0awGRKc1n4kVC61vs7UaL/X5HYMcCAFAQSuiNWIBOV7D3VQhHIpxcXBAAqk4RqSQ8w8="},{"name":"20250224_tools_claude-3-7-sonnet","k":316,"b":"ueziH6ursvR9859/z28/XZ+de73lsr/7D//Z/5s+is0OXS7/32btqf7f/1c7nKtjff1hIvZ/Jv/Q2w8="},{"name":"20250225_sweagent_claude-3-7-sonnet","k":312,"b":"+eziH4uLsvRv9/lHz/4/X7+8ea1nu71YL//d/Zs+mu1+wb//m9Zoufz//1a7uQkzcfhrJj98Nv/Q+w8="},{"name":"20250226_swerl_llama3_70b","k":206,"b":"oawgH6HCIlR9QUAGTAY/Bp4QG61DEDVQCd/ZnZM8q+0qyK3u3cJJqXq331Y7AKAgYeBgUiIslCTQ2wM="},{"name":"20250228_epam-ai-run-claude-3-5-sonnet","k":314,"b":"ueziH8vronR/s21/768//7/ce71Fub9eP/75/Z+eGq1+3a+/3WJpGX//3/6bracjcbRjIq98Rr/R/Qs="},{"name":"20250306_SWE-Fixer_Qwen2.5-7b-retriever_Qwen2.5-72b-editor","k":164,"b":"gOBiH8eIQlQtkYAGyGo2XQiUAoXBMjVKCfxZDaMMiCAOSQ+gqUIhCfBXzxYIMQhiIbFAUAIkQiQQAwo="},{"name":"20250316_augment_agent_v0","k":327,"b":"ue7iH8uLstQv8/93be8//5+Ve71v8r96L/fZ/9++ms1eyS+rO3Zpuf///16bvatrefzrJ759tv/Q+ws="},{"name":"20250405_amazon-q-developer-agent-20250405-dev","k":327,"b":"uSzwH8+LstRv8/937f8/77+1+b1lur1bL//d/98emu0eya//m0Zouf/f/147vas7ef1r5r99Fv/Q+w8="},{"name":"20250405_swe-rizzo_claude37","k":283,"b":"uezCn8+Is5Qt89lX6289/x/cyb1vu79aL/rdvL8+Kg0eXROrGUJpuX3v/1SblKsrcehjB7ttVPfQ+Qs="},{"name":"20250410_cortexa","k":291,"b":"tSzwn4vKsnZtw69mzT4+/52VW71vsr1aL//Z/b8e2q1OyYuufUZpuf/333a7GbMjcfjrEqftBrfQuw8="},{"name":"20250415_openhands","k":329,"b":"sSzwP+ursvTv0/8/S38//5/dW61vs79bP//Z278+qu0+Xb7/HWbt/f/f/1e7latzefxzJvd9Fv3Q+w8="},{"name":"20250430_zencoder_ai","k":350,"b":"ueziH5/vu/Z/8/93z34//5v1+71vu7tev//9/f8/2+1OWae/n/Ztuf//31a7sav7ff1vJ7d1NvfR+w8="},{"name":"20250503_patchpilot-v1.1-o4-mini","k":323,"b":"uezi39+qMvZ9+79/z++//5/d271vur/bL/35/b8+u+0u2e/+3WBpmf///zQbhYs6dfnhF6J8BL/Q3w8="},{"name":"20250511_sweagent_lm_32b","k":201,"b":"sOzCH4OIBtQtEMEGTCY+Xo4U0q1lkDVaDWHZnZociC0+zY6vWUAsOX7X31aAAZMCYfBAEgMtQDFQqAs="},{"name":"20250514_aime_coder","k":332,"b":"ue3in+ursvbv2/1/7+4//5+de73vsj9fP/75398eus0eyYb/v0Zo6X///16bvSsxefzjJ7999v3Q+w8="},{"name":"20250515_Refact_Agent","k":352,"b":"+ezin4vrs/Zv8/13by+//5+9e71vu79aP//d/ds/me1+ya///Xbt+X///1+bvbt7efx7d799Fv3T/w8="},{"name":"20250516_cortexa_o3","k":341,"b":"ue1in9vutvR98bt/7/6//5/9273vs79aL//d/b8/u81eySj/7VZtvf//33abvbv6ef3rJ7N/Br+Q/w8="},{"name":"20250519_devlo","k":351,"b":"ue3iH9/Ls/R/+/9/7+8//5//+61vu79aP//5/b8/q61+3S+rOWbt/f///1+bvatbfd3rJ7t8Nv/Q+w8="},{"name":"20250519_trae","k":353,"b":"ue7in8+ru9Tt0/9/7/8//5/V+73ps797P//Z/98+mu0+ya//n1bsvf//39+fvat7ffzrJ79/9v/Q+ws="},{"name":"20250520_openhands_devstral_small","k":234,"b":"sOhiH8nJklQt08EGQC89Xz7eYq3juzVaD/35nYEeis0OTYCuGWbgmfyf31aZESsicfhqIIcoQncSqws="},{"name":"20250522_sweagent_claude-4-sonnet-20250514","k":333,"b":"uezyn/urs9Rv8/937++//4ud+71ru/9fP/7d/Zs/C6F2/Jv/3UZsuf3f/06zvbszdf3zL7t8Fv/Q2ws="},{"name":"20250522_tools_claude-4-opus","k":366,"b":"ue/yX//rV9xf9/9/7/+/37/9+79r+/t7f//d35u/qu0+3b7/71bs7f///167hftbff33J3d/Fv2a+w8="},{"name":"20250522_tools_claude-4-sonnet","k":362,"b":"uezyn/urs9x/8/9/7/+//7+d+71v+/9bP/7d/bs/u/le3bL/7Vfs7////167natbff33R/c/tv3S3w8="},{"name":"20250524_openhands_claude_4_sonnet","k":352,"b":"ue7yH//Ls9T/1/9/53+/X5s9+71vu/9aP//9/5s/us0ef6D/33Zp+f7//376nesbffn7L79/lP/S+w8="},{"name":"20250527_amazon.nova-premier-v1.0","k":212,"b":"gOjCG6KIklT92eRGSSI9JoyUqp1DsD1KL/3ZjYceikkexZKn6UpgOf7GX5QPFaAiSbBjQIcpQpdQOAk="},{"name":"20250528_patchpilot_Co-PatcheR","k":230,"b":"sKjyH4uos1Qt0eFHSKQe7p+0Ga1FsL0eLfbZjZkeiqkOyRiqaUBJGf3331Y5OaggYfDhAqdsBLTS2ws="},{"name":"20250603_Refact_Agent_claude-4-sonnet","k":372,"b":"ue7i3/urs/Z/+/9/7/+/35+d+71/u79aP/7d/d+/ue1+/b//3ffp7f/P/367ves/ff3rZ/N/5v/S/w8="},{"name":"20250610_augment_agent_v1","k":352,"b":"ue/i39urM9Rt8/9/7/+//4/d+63vu//aP/7d/5s/u+1+3TqrGW7p+f///32bhetffd37p/9/tv/Q2w8="},{"name":"20250611_moatless_claude-4-sonnet-20250514","k":354,"b":"uezyn9/vM9R90/9/77+//5+d+71ru/9bL/fd/98/u+1+3Y/vn/brvf/f/1abvetzdfzjV/d/Fv3S+w8="},{"name":"20250612_trae","k":376,"b":"ue7y3//vs9T/9/9/7/+//5/de73t+/9bL//d//8/u63+7YP/31fs/f///9+7natzff97J/9/9v/Q3w8="},{"name":"20250616_Skywork-SWE-32B","k":190,"b":"gIhiH+PAA1R/kSFWTSY9C4kUKo1pkLVaL8icj4sEKAwOSQ8qGUxgGX4f3lYgAKoiYfhgAgBpRLcQqQs="},{"name":"20250616_Skywork-SWE-32B+TTS_Bo8","k":235,"b":"oejiH8uB8tQN0bhGRCY9X70ca61hspVaD/7ZjZs8Kg1uSaXuXW5hOX3H39YLECoDcehIAgpoVJbS+Q8="},{"name":"20250623_warp","k":355,"b":"ue7i3/urs5R/0/9/7/8/3p/d+69tu//bL37d/Zt/v+0e3b3/3fbn/f/f/3a7vft7ffhjJ7N/tv3S+w8="},{"name":"20250627_agentless_MCTS-Refine-7B","k":116,"b":"r8gAHAMIAGIIBIAFAEAEAAwQCKUBkCAABkBJAYAUCGAMRQNoeUIIiXpG+ZYsE4BgYYjCACBgBAQYmAA="},{"name":"20250629_deepswerl_r2eagent","k":211,"b":"iEzAH8eg00Zl0IkGwAs/zpoVM41OuBFYD97J7Yk5gGxsQIuuOUJheX7H33S6jYIqUZDiIqMoBF3QmQo="},{"name":"20250629_deepswerl_r2eagent_tts","k":294,"b":"mezmn8+ps3T9w4k2Sy8/z5yVKa1vMb1aL9/Z/Zv7iu1+yYvvfUdtqf/n33S7matrYfjjEy89VH/S+w8="},{"name":"20250710_bloop","k":356,"b":"ue7in/urs9Tvc/9/7/+/f5+Vf7/ru79aP/7d/Z/+u+1+3b//3/fvuf//3367tbt7cfxvN7F+Jv3S2w8="},{"name":"20250715_qodo_command","k":356,"b":"ue7yv/+rs9Z/8+9f6++/35+X/71vu79bL/f9vd//u50+3bDv3XLp/f///167vat/df/7J/N9Jv/Q3w8="},{"name":"20250716_openhands_kimi_k2","k":327,"b":"uezyH8+Ls1R/0/9/6S+/X5v9+73vsb1aL/fZ/7vem+0OXbD/G2Zp6f7f39Y7nas/dfzzN799Nv/S+w8="},{"name":"20250720_Lingxi-v1.5_claude-4-sonnet-20250514","k":373,"b":"+ezyP9vrs9R/8/9/7/+//7+V+73ru/9fP//d/99/u+1+3a//n1fs/f/f/1+7vat7ffz3N/9/Nv/a/ws="},{"name":"20250725_sweagent_devstral_small_2507","k":190,"b":"gOjCH8uAgnRplUEGRCYfDa4Uag1BMDlYD/HZnY8YCq0+xQIuGWIrGXhPyxYZAQAgcPBiAlssECdQuAs="},{"name":"20250728_zai_glm4-5","k":321,"b":"mezyH9vLstz/8+9vz/8//5+V271ruv9aP/bd/Z9Oqq00XaD733bt2f7f/1S7tSo5dfnjJrt9Nv3Q+w8="},{"name":"20250731_harness_ai","k":374,"b":"ue7y39vvs/R/9/9/7/+//5+d+73vuv9bL/7d/99/u+1+3a//33bt7f///167vet7ff37Jv9/Nv/S+w8="},{"name":"20250804_codesweep_sweagent_kimi_k2_instruct","k":267,"b":"kOjwH8+A4lQvs9kHzTY+X42Ue71nsz9OL//dvZ9OAm1uza/v/XJpmfz39xYbFasDceBjQrY8UpfQ8Qs="},{"name":"20250804_epam-ai-run-claude-4-sonnet","k":384,"b":"ve7i3//rs9Vv8/9/7/+/35/9/7/ruv/fP//9//v/q/1+7bT/XX/t+f///167vat7ff//P/9/tv/y2w8="},{"name":"20250805_openhands-Qwen3-Coder-30B-A3B-Instruct","k":258,"b":"mejyH8OhklR91+EHTjY9f4+cRb1jsLVaJ/zZ35s+ikkeTZPvGUZhGf7X/1arGSkjcPhjCqs4FP/S2w8="},{"name":"20250805_openhands-Qwen3-Coder-480B-A35B-Instruct","k":348,"b":"mexyn/vrMt5t8/9X4/8//5+9ee3vu/9aP/zd/5t/uo0+Xb//n2bt+f7//1b7met/dfv3J7v9tvfS+w8="},{"name":"20250806_SWE-Exp_DeepSeek-V3","k":210,"b":"sODQH8PJItZvkakGyT4/VoyUEa1lsbsaDvTZnZsOiOauySquGUIIiX5H1xaoBaIiYfBgAoQsAhHQuwM="},{"name":"20250807_openhands_gpt5","k":359,"b":"+fzyP9+PM9Z/87//7/+//7/8+73vu7/6L//d37t/uv2+3aT/3Xbt6f/v/167vav5ffjvJ/N/FPXS3w8="},{"name":"20250819_ACoder","k":382,"b":"ue/i3//r99Z99/9/7/+//7+9/73vu7/aP//9///fOu1+27f//87o/f/f3/67tTt5ff3vZ/9/tv/S/w8="},{"name":"20250901_entroPO_R2E_QwenCoder30BA3B","k":261,"b":"iejiH2+LklQt0ylGyF98H4+cWr1huL1aDfz53ZYaiskezb/v2UJpvf5f3147nSsbYfhiBhN8RDfS8ws="},{"name":"20250901_entroPO_R2E_QwenCoder30BA3B_tts","k":302,"b":"meziF4urstRtx8kGzv8+f4+dO71nsz1aD97ZnZd7qu0+zb//eWYt/f/H/3a7mTh7fPjhWj98Vv/S+w8="},{"name":"20250901_warp","k":378,"b":"ue7+v//vN/5/879/7+6//5/d+63r//9b7//93/9/us3+3b///+bt7f/9/1/7va/befj/F/N9Fv3a2w8="},{"name":"20250902_atlassian-rovo-dev","k":384,"b":"+e/y//uvt9b/9/9/7/6//5/1+61ru//br//d//v/uv1/3b////bt/f///167vbvfffz3J/N+lv/S3w8="},{"name":"20250915_JoyCode","k":373,"b":"ue/yn9uvs9T/9/9/7++/37/1+71vu79aP/79////u+1+7eD/38fs7///3367/Wt5ffzjrr99Pv/3/w8="},{"name":"20250924_artemis_agent_v2","k":285,"b":"kebiX9eDspRv2a8Pb/+9/ZiU+a1vs71qL/7Z358+qq1u2YC6yUJoqf/f3166naMTPdhiI6l+Bv3Q+w8="},{"name":"20250928_trae_doubao_seed_code","k":394,"b":"+f/+f8/vt97v879/7/+/39/x+71r+79f///d39//u/3+3bf////t7f///9+bvft/df73d/9u9v/Q/w8="},{"name":"20250929_Prometheus_v1.2_gpt5","k":356,"b":"ufziP9/Pt/Z/++9/be///57d+71v+r/abv/f359/u81u3SD//35trf///3e7vbvfddtjF7vtlv3S2w8="},{"name":"20250930_zai_glm4-6","k":341,"b":"veziX/urs9Rv8/4/7y6//59Ve63ru/9eL//d/fv+u/U+Xbb/nWbt6f/v/9a7vao7dfnpZ7t9Jn/Q/w8="},{"name":"20251014_Lingxi_kimi_k2","k":356,"b":"mf7yn9/Ls/xv079vz/+//4+9+73vur9aL//d/79/m+0+3aH//0bs+f7f/367ubt7ff3j579/Nv/S2w8="},{"name":"20251015_Prometheus_v1.2.1_gpt5","k":372,"b":"ufziv9/Pt/Z/++9/b+///5/d+71v+r/ebv/f359/u81+3Wj///5t7f///3+7vbvff9tjN7vt1/3a2w8="},{"name":"20251021_SalesforceAIResearch_SAGE_bash_only","k":365,"b":"ve7+//vrM9R/9/d//+6/35/c+71r8v/bf//d/59/u8hmWZ//33/t7f///167vbt+ff33J/d9lv3Q2w8="},{"name":"20251103_SalesforceAIResearch_SAGE_OpenHands","k":369,"b":"uez+H5uvM9b/8/9/7f6//7/9+63vu79erv//379/us3+Xb/v3XZt6f///z+7vev7be3/t/N/Fv/S/w8="},{"name":"20251103_sonar-foundation-agent_claude-sonnet-4-5","k":374,"b":"u+zin//vtt5/8/9//++//7/df71zu/97P//9379/u/3+3bDv3X7t7f///167vevffdn3J/9+Nv3Q/w8="},{"name":"20251110_frogboss-32b","k":268,"b":"kOzCHxeBslRtsypGzu4/z4+de61rsLdaLfbdjZN6ik1cCYnvWWYpyX/X/347jaoqYf1jJup/Fj/S+ws="},{"name":"20251110_frogmini-14b","k":225,"b":"IOTCH8MBkhRv0qFGy2Y+/I2UcodlsD1qD7zZ/Z8ZCQ1aTYPvGUJJCX3X33abgCEiYfhiQitsADfQuws="},{"name":"20251120_livesweagent_gemini-3-pro-preview","k":387,"b":"/e3yP//rv/5v1///7/+//9/9/79v+/9eL////79/u/1/TeP//Xbt/f///367vftbfd37d/t8hv/S3w8="},{"name":"20251127_openhands_claude-opus-4-5","k":388,"b":"uefiv9/P9/Z/0/9/7++/37v9/7/v+7/6b//9/b9/u/3+Xf7/3X/97f///3+7rfvbfd3/t/d+pv/a3w8="},{"name":"20251205_sonar-foundation-agent_claude-opus-4-5","k":396,"b":"ue1iv/vv9/7/8/9//++//5/9/7/r+/9b///9/b9/u/3/3fL/33f9/f///3+7ufvbfd3/N79+t/3b3w8="},{"name":"20251215_livesweagent_claude-opus-4-5","k":396,"b":"uezyv9/r9/Z/8/9//++/37u9/7/v+/97f//9/79/u/2+Xf//33/v/f///3+7rfvf/d3/t798tv+a/w8="}],"agg":{"adj_noise_pct":97,"near_noise_pct":76,"mdd_pts":5.4}};
+
+// ---- stats ----
+function popcountAnd(a, b, negate) {
+  // count bits where a=1 and (negate? b=0 : b=1)
+  let n = 0;
+  for (let i = 0; i < a.length; i++) {
+    const bb = negate ? (~b[i]) : b[i];
+    let v = a[i] & bb & 0xff;
+    while (v) { v &= v - 1; n++; }
+  }
+  return n;
+}
+function discordant(A, B) {
+  return [popcountAnd(A.bits, B.bits, true), popcountAnd(B.bits, A.bits, true)];
+}
+function mcnemar(b, c) {
+  const m = b + c;
+  if (m === 0) return 1.0;
+  const k = Math.min(b, c);
+  let p = Math.exp(-m * Math.LN2);   // P(X=0)
+  let cum = p;
+  for (let i = 1; i <= k; i++) { p = p * (m - i + 1) / i; cum += p; }
+  return Math.min(1.0, 2 * cum);
+}
+function wilson(k, n) {
+  const z = 1.959963985, p = k / n, d = 1 + z*z/n;
+  const c = (p + z*z/(2*n)) / d;
+  const h = (z/d) * Math.sqrt(p*(1-p)/n + z*z/(4*n*n));
+  return [Math.max(0, c - h), Math.min(1, c + h)];
+}
+const pct = x => (100*x).toFixed(1) + '%';
+
+// ---- data prep ----
+const N = DATA.n;
+DATA.subs.forEach(s => {
+  s.bits = Uint8Array.from(atob(s.b), ch => ch.charCodeAt(0));
+});
+const ranked = [...DATA.subs].sort((a,b) => b.k - a.k);
+const selA = document.getElementById('selA'), selB = document.getElementById('selB');
+ranked.forEach((s, i) => {
+  const label = `${pct(s.k/N)}  ${s.name}`;
+  selA.add(new Option(label, s.name));
+  selB.add(new Option(label, s.name));
+});
+
+function byName(n) { return DATA.subs.find(s => s.name === n); }
+
+function render() {
+  const A = byName(selA.value), B = byName(selB.value);
+  document.getElementById('nameA').textContent = A.name;
+  document.getElementById('nameB').textContent = B.name;
+  document.getElementById('valA').textContent = pct(A.k/N);
+  document.getElementById('valB').textContent = pct(B.k/N);
+  const [la,ha] = wilson(A.k, N), [lb,hb] = wilson(B.k, N);
+  document.getElementById('ciA').textContent = `95% CI [${pct(la)}, ${pct(ha)}]`;
+  document.getElementById('ciB').textContent = `95% CI [${pct(lb)}, ${pct(hb)}]`;
+
+  if (A.name === B.name) {
+    document.getElementById('verdict').className = 'verdict';
+    document.getElementById('verdict').textContent = 'Pick two different systems.';
+    document.getElementById('bar').innerHTML = '';
+    document.getElementById('aOnlyLbl').textContent = '';
+    document.getElementById('agreeLbl').textContent = '';
+    document.getElementById('cOnlyLbl').textContent = '';
+    document.getElementById('gap').textContent = '—';
+    document.getElementById('disc').textContent = '—';
+    document.getElementById('pval').textContent = '—';
+    return;
+  }
+
+  const [b, c] = discordant(A, B);
+  const agree = N - b - c;
+  const p = mcnemar(b, c);
+  const gap = (A.k - B.k) / N;
+
+  const bar = document.getElementById('bar');
+  bar.innerHTML = '';
+  const seg = (cls, w) => { const d = document.createElement('div'); d.className = cls; d.style.width = (100*w/N)+'%'; bar.appendChild(d); };
+  seg('aonly', b); seg('agree', agree); seg('conly', c);
+  document.getElementById('aOnlyLbl').textContent = `${b} only A`;
+  document.getElementById('agreeLbl').textContent = `${agree} agree`;
+  document.getElementById('cOnlyLbl').textContent = `${c} only B`;
+
+  document.getElementById('gap').textContent = (gap>=0?'+':'') + (100*gap).toFixed(1) + ' pts';
+  document.getElementById('disc').textContent = `${b} / ${c}`;
+  document.getElementById('pval').textContent = p < 0.001 ? '<0.001' : p.toFixed(3);
+
+  const v = document.getElementById('verdict');
+  if (p >= 0.05) {
+    v.className = 'verdict noise';
+    v.textContent = `Indistinguishable at N=${N}. This gap is noise.`;
+  } else {
+    v.className = 'verdict real';
+    v.textContent = `Distinguishable (p<0.05). This gap is real.`;
+  }
+}
+
+// ---- presets ----
+function setPair(nameA, nameB) { selA.value = nameA; selB.value = nameB; render(); }
+document.querySelectorAll('.presets button').forEach(btn => {
+  btn.onclick = () => {
+    const kind = btn.dataset.preset;
+    if (kind === 'coinflip') setPair(ranked[0].name, ranked[1].name);
+    else if (kind === 'topbottom') setPair(ranked[0].name, ranked[ranked.length-1].name);
+    else { // random adjacent
+      const i = Math.floor(Math.random() * (ranked.length - 1));
+      setPair(ranked[i].name, ranked[i+1].name);
+    }
+  };
+});
+selA.onchange = render; selB.onchange = render;
+
+// aggregate line
+document.getElementById('agg').innerHTML =
+  `<b>Across the whole leaderboard:</b> ${DATA.agg.adj_noise_pct}% of adjacent-rank pairs are statistically indistinguishable, and ${DATA.agg.near_noise_pct}% of all pairs within 5 points are. The benchmark's smallest reliably-detectable difference is about ${DATA.agg.mdd_pts} points — wider than most gaps the ranking implies.`;
+
+// default: the coin flip
+setPair(ranked[0].name, ranked[1].name);
+</script>
+</body>
+</html>
