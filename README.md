@@ -20,7 +20,7 @@ statistical machinery that agent-eval reports usually skip:
 ## Install
 
 ```bash
-pip install git+https://github.com/<YOUR_GH>/evalstats
+pip install git+https://github.com/tapishr/evalstats
 ```
 
 (Pre-1.0; install from source. PyPI package to follow once the API settles.)
