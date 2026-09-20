@@ -42,6 +42,12 @@ diff, lo, hi = paired_diff_ci(b, c, n=500)         # CI on the score difference
 mdd_paired(n=500, discordance=0.20)     # -> ~0.056 (5.6 points!) at 80% power
 ```
 
+## The essay
+
+**[The #1 Spot on SWE-bench Is a Coin Flip](ESSAY.md)** — the launch write-up. The top two
+systems on SWE-bench Verified are tied at 79.2%, disagree on 36 tasks, and split them 18–18.
+97% of adjacent leaderboard pairs are statistically indistinguishable.
+
 ## The point
 
 At N=500 tasks (SWE-bench Verified) with typical between-system discordance,
